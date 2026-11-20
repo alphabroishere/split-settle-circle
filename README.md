@@ -1,66 +1,84 @@
-# SplitMate
+# SplitMate 💸
 
-Build a modern, responsive web application called SplitMate, an expense splitter for hostel students and friend groups.
+**Split expenses fairly. Settle up with fewer payments.**
 
-The application should allow users to:
+SplitMate is an expense-splitting web app designed for hostel students, roommates, and friend groups. It helps groups record shared expenses, divide bills fairly—including item-wise splits—and calculate who owes whom with a settlement plan that minimizes the number of transactions.
 
-Create expense groups.
+## 🚀 Live Demo
 
-Add group members.
+[Open SplitMate](https://split-settle-circle.lovable.app)
 
-Record expenses with description, amount, payer and date.
+## 🧩 Problem
 
-Split expenses equally between selected members.
+Groups of friends and hostel roommates often share meals, groceries, travel, and other expenses. Tracking who paid, how much each person owes, and settling balances can become confusing—especially when expenses are not divided equally.
 
-Support unequal splits where members can enter custom amounts.
+## 💡 Solution
 
-Display each member's total paid, total share and net balance.
+SplitMate keeps shared expenses organized in one place. Members can record expenses, choose how they are split, view balances, and get a simplified settlement plan. Suggested payments can open a UPI app through a payment link.
 
-Show who owes whom.
+## ✨ Features
 
-Calculate settlements using the minimum-transactions algorithm.
+- **Expense groups and members** — organize expenses for a hostel group or friends.
+- **Expense tracking** — record the amount, payer, description, category, date, and participants.
+- **Equal splitting** — divide an expense equally among selected members.
+- **Custom / unequal splitting** — specify each member's share.
+- **Bill-photo item-wise splitting** — split a bill by assigning individual items to group members.
+- **Accurate rounding** — handle amounts to the paise and ensure allocations reconcile with the bill total.
+- **Balance tracking** — view how much each member paid, their share, and their net balance.
+- **Minimum-transactions settlement** — generate a settlement plan designed to reduce the number of payments needed to clear group balances.
+- **UPI payment links** — launch a compatible UPI app from a suggested settlement.
+- **Dashboard** — view group expenses and balances at a glance.
+- **Responsive UI** — use the app on desktop or mobile.
 
-Generate UPI payment links for suggested settlements.
+## 🧮 Settlement algorithm
 
-Display a dashboard with total group expenses and balances.
+SplitMate calculates each member's net balance, then pairs people who are owed money with people who owe money to generate settlement suggestions. The goal is to clear balances using as few transactions as possible. The implementation is tested against a brute-force reference for small groups.
 
-Design:
+## 🛠️ Tech Stack
 
-Modern student-focused interface.
+- React 19
+- TypeScript
+- TanStack Start / TanStack Router
+- Vite
+- Tailwind CSS
+- Vitest
+- Lucide icons and supporting UI libraries
 
-Clean dashboard with cards.
+## 🧪 Testing
 
-Responsive layout for mobile and desktop.
+Automated tests cover expense splitting, item-wise allocations, rounding, validation, and settlement logic. The project was reported to have **55 automated tests passing** during development.
 
-Simple navigation sidebar.
+## ▶️ Run locally
 
-Use green for positive balances and appropriate contrasting colors for amounts owed.
+Requirements: Node.js and npm.
 
-Include realistic sample data.
-
-Make the application functional, not just a static UI.
-
-Start with the frontend and sample data. Do not add authentication or complex backend functionality yet.
-
-This project was built with [Lovable](https://lovable.dev).
-
-**Live app**: https://split-settle-circle.lovable.app
-
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/c8bf2ce8-7009-430d-8829-067fedb5cdfa).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
-
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
+```bash
+git clone https://github.com/alphabroishere/split-settle-circle.git
+cd split-settle-circle
+npm install
 npm run dev
 ```
+
+Other useful scripts:
+
+```bash
+npm run build
+npm run test
+npm run lint
+```
+
+## 🤖 Development Tools & Disclosure
+
+SplitMate was developed with assistance from **Lovable** (AI-powered development platform). The project was tested and iteratively refined, including validation of expense splitting, settlement calculations, and UPI link behavior.
+
+## 🔮 Future Scope
+
+- User authentication and persistent cloud storage
+- Group invitations and shared access
+- Settlement history and notifications
+- Improved receipt scanning and item recognition
+- More payment-provider integrations
+
+---
+
+Built for a hackathon problem focused on expense splitting for hostel groups.
