@@ -35,3 +35,5 @@ use the editor.
 - Money is stored as integer paise everywhere; convert only at input/display (`toPaise`, `formatINR`) to avoid float drift.
 - Pure money logic (splits, item-wise bill splits, balances, minimum-transaction settlement, UPI links) lives in `src/lib/splitmate/calc.ts` with tests in `calc.test.ts` / `bill-split.test.ts`; keep UI free of calculation logic.
 - Itemized expenses reuse the normal `Expense` (splitType `unequal`, final `shares`) plus an optional `bill` snapshot; optional item `customShares` stores per-member paise, while legacy items remain equal splits.
+- Settlement pairs exact opposite balances first (never loses optimality), then runs the exact bitmask search; greedy is only a fallback above `EXACT_LIMIT` unpaired people. Tests compare against brute force.
+- UPI links are built by hand, not with URLSearchParams: values use %20 (some UPI apps show "+" literally), "@" stays literal, and names/notes are stripped of emoji/symbols.

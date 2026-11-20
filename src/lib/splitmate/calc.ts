@@ -1,9 +1,23 @@
 import type { BillCharge, Expense, ItemizedBill, MemberBalance, Paise, Payment, Transfer } from "./types";
 
+/**
+ * Rupees (as typed, e.g. "157.5" or 157.5) to integer paise. Parses the decimal
+ * text instead of multiplying floats, so 1.005 becomes 101, not 100. Rounds
+ * half away from zero at the third decimal. Invalid input becomes 0.
+ */
 export const toPaise = (rupees: number | string): Paise => {
-  const n = typeof rupees === "string" ? parseFloat(rupees) : rupees;
-  if (!Number.isFinite(n)) return 0;
-  return Math.round(n * 100);
+  if (typeof rupees === "number" && !Number.isFinite(rupees)) return 0;
+  const text = String(rupees).replace(/[₹,\s]/g, "");
+  const m = /^([+-]?)(\d*)(?:\.(\d*))?$/.exec(text);
+  if (!m || (m[2] === "" && (m[3] ?? "") === "")) {
+    const n = Number(text); // e.g. 1e21 from a very large number
+    return Number.isFinite(n) ? Math.round(n * 100) : 0;
+  }
+  const sign = m[1] === "-" ? -1 : 1;
+  const frac = (m[3] ?? "").padEnd(3, "0");
+  const whole = Number(m[2] || "0") * 100 + Number(frac.slice(0, 2));
+  const paise = whole + (Number(frac[2]) >= 5 ? 1 : 0);
+  return paise === 0 ? 0 : sign * paise;
 };
 
 export const fromPaise = (p: Paise) => p / 100;
@@ -32,6 +46,17 @@ export function splitEqually(amount: Paise, memberIds: string[]): Record<string,
 
 export const sumShares = (shares: Record<string, Paise>) =>
   Object.values(shares).reduce((a, b) => a + b, 0);
+
+/** Problems with a "custom amounts" split. Empty array = shares add up exactly to the total. */
+export function validateCustomSplit(total: Paise, shares: Record<string, Paise>): string[] {
+  const values = Object.values(shares);
+  if (values.length === 0) return ["Enter at least one custom amount"];
+  if (values.some((v) => !Number.isSafeInteger(v) || v < 0)) return ["Custom amounts can't be negative"];
+  const remaining = total - sumShares(shares);
+  if (remaining > 0) return [`${formatINR(remaining)} still unassigned`];
+  if (remaining < 0) return [`Custom amounts exceed total by ${formatINR(-remaining)}`];
+  return [];
+}
 
 /** Paid, share and net balance per member. Settle-up payments move balances toward zero. */
 export function computeBalances(
@@ -121,14 +146,36 @@ const EXACT_LIMIT = 14;
  *
  * The minimum equals (people with non-zero balance) − (max number of disjoint
  * groups whose balances sum to zero). We find that partition with a bitmask DP,
- * then settle each zero-sum group with k−1 transfers. Falls back to greedy for
- * very large groups.
+ * then settle each zero-sum group with k−1 transfers. People whose balances
+ * exactly cancel (+x / −x) are paired first — that never loses optimality and
+ * keeps the exact search small. Falls back to greedy only if more than
+ * EXACT_LIMIT people are still left after pairing.
+ * Balances are integer paise and add up to zero.
  */
 export function minimizeTransactions(balances: { memberId: string; net: Paise }[]): Transfer[] {
-  const people = balances.filter((b) => b.net !== 0).map((b) => ({ id: b.memberId, net: b.net }));
+  const all = balances.filter((b) => b.net !== 0).map((b) => ({ id: b.memberId, net: Math.round(b.net) }));
+  // Inconsistent data (shouldn't happen): settle what can be settled instead of crashing the page.
+  if (all.reduce((a, p) => a + p.net, 0) !== 0) return greedySettle(all);
+
+  // Pair exact opposites first.
+  const paired: Transfer[] = [];
+  const waiting = new Map<number, { id: string; net: number }[]>();
+  const people: { id: string; net: number }[] = [];
+  for (const p of all) {
+    const match = waiting.get(-p.net)?.pop();
+    if (match) {
+      people.splice(people.indexOf(match), 1);
+      paired.push(p.net < 0 ? { from: p.id, to: match.id, amount: -p.net } : { from: match.id, to: p.id, amount: p.net });
+    } else {
+      people.push(p);
+      const list = waiting.get(p.net) ?? [];
+      list.push(p);
+      waiting.set(p.net, list);
+    }
+  }
   const n = people.length;
-  if (n === 0) return [];
-  if (n > EXACT_LIMIT) return greedySettle(people);
+  if (n === 0) return paired.sort((a, b) => b.amount - a.amount);
+  if (n > EXACT_LIMIT) return [...paired, ...greedySettle(people)].sort((a, b) => b.amount - a.amount);
 
   const size = 1 << n;
   const sum = new Array<number>(size).fill(0);
@@ -162,7 +209,7 @@ export function minimizeTransactions(balances: { memberId: string; net: Paise }[
     mask ^= chosen;
   }
 
-  const out: Transfer[] = [];
+  const out: Transfer[] = [...paired];
   for (const g of groups) {
     const members = people.filter((_, i) => g & (1 << i));
     out.push(...greedySettle(members));
@@ -179,21 +226,39 @@ function popcount(x: number) {
   return c;
 }
 
-/** Standard UPI deep link (NPCI spec) that opens GPay, PhonePe, Paytm, etc. */
+/** Keep letters, digits, spaces and simple punctuation; UPI apps reject or garble symbols and emoji. */
+const upiText = (v: string, max: number) =>
+  v
+    .normalize("NFC")
+    .replace(/[^\p{L}\p{M}\p{N} .,'()\/_-]/gu, " ")
+    .replace(/(?<![\p{L}\p{M}])\p{M}+/gu, "") // marks only belong on letters (drops emoji variation selectors)
+    .replace(/\s+/g, " ").trim().slice(0, max).trim();
+
+/**
+ * Standard UPI deep link (NPCI "upi://pay" URI) that opens GPay, PhonePe,
+ * Paytm, BHIM or any installed UPI app with everything prefilled:
+ * pa = receiver UPI ID, pn = receiver name, am = amount in rupees (2 decimals),
+ * cu = INR, tn = note. Values are percent-encoded (spaces as %20, not "+",
+ * which some UPI apps show literally); "@" stays literal in the UPI ID, as UPI
+ * apps expect. No payment is processed here.
+ */
 export function buildUpiLink(opts: {
   upiId: string;
   payeeName: string;
   amount: Paise;
   note: string;
 }): string {
-  const params = new URLSearchParams({
-    pa: opts.upiId.trim(),
-    pn: opts.payeeName,
-    am: (opts.amount / 100).toFixed(2),
-    cu: "INR",
-    tn: opts.note.slice(0, 80),
-  });
-  return `upi://pay?${params.toString()}`;
+  const upiId = opts.upiId.trim();
+  if (!isValidUpiId(upiId)) throw new Error("Invalid UPI ID");
+  if (!Number.isSafeInteger(opts.amount) || opts.amount <= 0) throw new Error("UPI amount must be above ₹0");
+  const params: [string, string][] = [
+    ["pa", upiId],
+    ["pn", upiText(opts.payeeName, 50) || upiId],
+    ["am", `${Math.floor(opts.amount / 100)}.${String(opts.amount % 100).padStart(2, "0")}`],
+    ["cu", "INR"],
+    ["tn", upiText(opts.note, 80)],
+  ];
+  return `upi://pay?${params.filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v).replace(/%40/g, "@")}`).join("&")}`;
 }
 
 export const isValidUpiId = (v: string) => /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,64}$/.test(v.trim());

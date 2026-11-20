@@ -143,3 +143,43 @@ describe("per-item custom allocations", () => {
     expect(validateItemizedBill(bill, 18000)).toContain("Dish has invalid custom allocations");
   });
 });
+
+describe("scanned bill → item-wise custom split → exact reconciliation", () => {
+  it("assigns different amounts per member on each scanned item and matches the bill total to the paisa", async () => {
+    const { scannedToDraft, draftToBill } = await import("./bill-draft");
+    // What the bill reader returns (rupees, with decimals).
+    const draft = scannedToDraft({
+      isReceipt: true, merchant: "Cafe Mocha", date: "2026-11-20", subtotal: 1047.5, grandTotal: 1099.88,
+      items: [
+        { name: "Pizza", quantity: 1, unitPrice: 649.5, totalPrice: 649.5 },
+        { name: "Mocktails", quantity: 2, unitPrice: 199, totalPrice: 398 },
+      ],
+      charges: [{ label: "GST 5%", type: "tax", amount: 52.38 }],
+    });
+    const [pizza, drinks] = draft.items;
+    if (!pizza || !drinks) throw new Error("items missing");
+    // Pizza: a ₹400, b ₹149.50, c ₹100. Mocktails: a ₹0.01, b ₹397.99.
+    Object.assign(pizza, { memberIds: ["a", "b", "c"], splitMode: "custom", customShares: { a: "400", b: "149.50", c: "100" } });
+    Object.assign(drinks, { memberIds: ["a", "b"], splitMode: "custom", customShares: { a: "0.01", b: "397.99" } });
+
+    const bill = draftToBill(draft);
+    expect(validateItemizedBill(bill, toPaise("1099.88"))).toEqual([]);
+    const split = computeItemizedSplit(bill);
+    expect(split.total).toBe(109988);
+    expect(Object.values(split.shares).reduce((x, y) => x + y, 0)).toBe(109988);
+    expect(split.perMember["a"]?.items).toBe(40001);
+    expect(split.perMember["b"]?.items).toBe(54749);
+    expect(split.perMember["c"]?.items).toBe(10000);
+    expect(Object.values(split.shares).every(Number.isInteger)).toBe(true);
+  });
+
+  it("blocks saving when one scanned item's member amounts are off by one paisa", async () => {
+    const { scannedToDraft, draftToBill } = await import("./bill-draft");
+    const draft = scannedToDraft({
+      isReceipt: true, merchant: null, date: null, subtotal: 100, grandTotal: 100, charges: [],
+      items: [{ name: "Thali", quantity: 1, unitPrice: 100, totalPrice: 100 }],
+    });
+    Object.assign(draft.items[0]!, { memberIds: ["a", "b"], splitMode: "custom", customShares: { a: "60", b: "39.99" } });
+    expect(validateItemizedBill(draftToBill(draft), 10000)).toContain("Thali allocations must add up to ₹100");
+  });
+});

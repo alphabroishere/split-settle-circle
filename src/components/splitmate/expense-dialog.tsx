@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { CATEGORIES } from "@/lib/splitmate/categories";
-import { computeItemizedSplit, formatINR, splitEqually, sumShares, toPaise, validateItemizedBill } from "@/lib/splitmate/calc";
+import { computeItemizedSplit, formatINR, splitEqually, sumShares, toPaise, validateCustomSplit, validateItemizedBill } from "@/lib/splitmate/calc";
 import { billToDraft, draftToBill, emptyDraft, type BillDraft } from "@/lib/splitmate/bill-draft";
 import type { ScannedBill } from "@/lib/splitmate/bill-scan.functions";
 import { todayISO, uid, useActiveGroup } from "@/lib/splitmate/store";
@@ -79,7 +79,7 @@ export function ExpenseDialog({ trigger, expense, open: openProp, onOpenChange }
   const customShares: Record<string, number> = {};
   for (const m of members) {
     const v = toPaise(custom[m.id] || 0);
-    if (v > 0) customShares[m.id] = v;
+    if (v !== 0) customShares[m.id] = v;
   }
   const customSum = sumShares(customShares);
   const remaining = total - customSum;
@@ -100,11 +100,8 @@ export function ExpenseDialog({ trigger, expense, open: openProp, onOpenChange }
       if (selected.length === 0) { toast.error("Pick at least one person to split with"); return; }
       shares = equalShares;
     } else {
-      if (Object.keys(customShares).length === 0) { toast.error("Enter at least one custom amount"); return; }
-      if (remaining !== 0)
-        { toast.error(
-          remaining > 0 ? `${formatINR(remaining)} still unassigned` : `Custom amounts exceed total by ${formatINR(-remaining)}`,
-        ); return; }
+      const errors = validateCustomSplit(total, customShares);
+      if (errors.length) { toast.error(errors[0]); return; }
       shares = customShares;
     }
     dispatch({

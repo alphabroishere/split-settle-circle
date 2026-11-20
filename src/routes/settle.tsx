@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { BalanceAmount, EmptyState, formatDate, MemberAvatar, PageHeader, Panel, PanelTitle } from "@/components/splitmate/bits";
-import { buildUpiLink, formatINR } from "@/lib/splitmate/calc";
+import { buildUpiLink, formatINR, isValidUpiId } from "@/lib/splitmate/calc";
 import { todayISO, uid } from "@/lib/splitmate/store";
 import { useGroupStats } from "@/lib/splitmate/use-group-stats";
 import type { Transfer } from "@/lib/splitmate/types";
@@ -33,8 +33,14 @@ function SettlePage() {
 
   const linkFor = (t: Transfer) => {
     const payee = byId.get(t.to);
-    if (!payee?.upiId) return null;
-    return buildUpiLink({ upiId: payee.upiId, payeeName: payee.name, amount: t.amount, note: `SplitMate · ${group.name}` });
+    if (!payee?.upiId || !isValidUpiId(payee.upiId) || t.amount <= 0) return null;
+    const payer = byId.get(t.from);
+    return buildUpiLink({
+      upiId: payee.upiId,
+      payeeName: payee.name,
+      amount: t.amount,
+      note: `SplitMate ${group.name} - ${payer?.name ?? "Settle up"} to ${payee.name}`,
+    });
   };
 
   const markPaid = (t: Transfer) => {
